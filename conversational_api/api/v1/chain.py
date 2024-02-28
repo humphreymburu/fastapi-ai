@@ -20,6 +20,7 @@ from fastapi import FastAPI
 from langchain.schema import Document
 #from langchain.chat_models import ChatOpenAI
 from langchain_openai import ChatOpenAI
+from langchain_openai import AzureChatOpenAI
 from langchain.prompts import ChatPromptTemplate
 from langchain.prompts.prompt import PromptTemplate
 from langchain.schema import format_document
@@ -63,6 +64,9 @@ OPENSEARCH_USERNAME = os.getenv("OPENSEARCH_USERNAME")
 OPENSEARCH_PASSWORD = os.getenv("OPENSEARCH_PASSWORD")
 OPENSEARCH_INDEX_NAME = os.getenv("OPENSEARCH_INDEX_NAME")
 
+AZURE_OPENAI_API_KEY = os.getenv("AZURE_OPENAI_API_KEY") 
+AZURE_OPENAI_DEPLOYMENT_ENDPOINT = os.getenv("https://unepazcsdopenai-comms.openai.azure.com/")
+
 
 _TEMPLATE = """
 Given the following conversation and a follow up question, rephrase the 
@@ -85,8 +89,16 @@ ANSWER_TEMPLATE = load_answer_template("answer.txt")
 
 ANSWER_PROMPT = ChatPromptTemplate.from_template(ANSWER_TEMPLATE)
 
-
 DEFAULT_DOCUMENT_PROMPT = PromptTemplate.from_template(template="{page_content}")
+
+llmAzure = AzureChatOpenAI(
+    openai_api_version="2023-05-15",
+    openai_api_key=AZURE_OPENAI_API_KEY, 
+    model_name="gpt-3.5-turbo", 
+    openai_api_type="azure",
+    mopenai_api_base= AZURE_OPENAI_DEPLOYMENT_ENDPOINT,
+    temperature=0.7
+)
 
 llm = ChatOpenAI(
     model="gpt-3.5-turbo",
@@ -107,8 +119,7 @@ def get_retriever() -> BaseRetriever:
         vector_field= "embedding",
     )
 
-    return vector_store.as_retriever(search_kwargs={'k': 3, 'vector_field':"embedding",'score_threshold': 0.5})
-
+    return vector_store.as_retriever(search_kwargs={'k': 6, 'vector_field':"embedding"})
 
 
 try:
@@ -134,7 +145,6 @@ try:
     #print(f"Got {len(results)} results for query: {query}")
     #for result in results: 
         #print(result)
-
 
 except Exception as e:
     print("Failed to connect to OpenSearch!")

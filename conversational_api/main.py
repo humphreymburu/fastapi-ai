@@ -16,24 +16,44 @@ from fastapi import FastAPI
 from langchain.schema import format_document
 from langserve import add_routes
 from langserve.pydantic_v1 import BaseModel, Field
-from chain import ChatHistory, chain
+from fastapi.middleware.cors import CORSMiddleware
+#from chain import ChatHistory, chain
+##from pydantic import BaseModel
 
+from chain import ChatHistory, answer_chain
 
 app = FastAPI(
-    title="LangChain Server",
+    title="Generative Chat",
     version="1.0",
-    description="Spin up a simple api server using Langchain's Runnable interfaces",
+    description="UNEP RAG AI API",
 )
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    #allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=["*"],
+)
+
+
 # Adds routes to the app for using the chain under:
 # /invoke
 # /batch
 # /stream
 
+add_routes(
+    app, answer_chain, enable_feedback_endpoint=True, path="/chat", input_type=ChatHistory, config_keys=["metadata"]
+)
 
-add_routes(app, chain, enable_feedback_endpoint=True)
-
+#add_routes(app, chain, enable_feedback_endpoint=True)
 
 if __name__ == "__main__":
     import uvicorn
 
     uvicorn.run(app, host="localhost", port=8000)
+
+    import time
+
+
