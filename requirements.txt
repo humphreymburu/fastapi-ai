@@ -1,1 +1,9 @@
 fastapi[all]
+langserve
+langchain
+tiktoken
+opensearch-py
+pydantic
+openai
+langchain-community
+langchain-openai
