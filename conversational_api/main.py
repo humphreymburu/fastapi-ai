@@ -12,6 +12,7 @@ pip install langchain openai faiss-cpu tiktoken
 from operator import itemgetter
 from typing import List, Tuple
 from fastapi import FastAPI
+from fastapi.responses import StreamingResponse
 
 from langchain.schema import format_document
 from langserve import add_routes
@@ -32,11 +33,11 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     #allow_credentials=True,
-    allow_methods=["*"],
+    #allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["*"],
     expose_headers=["*"],
 )
-
 
 # Adds routes to the app for using the chain under:
 # /invoke
@@ -46,6 +47,8 @@ app.add_middleware(
 add_routes(
     app, answer_chain, enable_feedback_endpoint=True, path="/chat", input_type=ChatHistory, config_keys=["metadata"]
 )
+
+
 
 #add_routes(app, chain, enable_feedback_endpoint=True)
 

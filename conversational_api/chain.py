@@ -14,12 +14,13 @@ from typing import List, Tuple
 import os
 from dotenv import load_dotenv
 from typing import Dict, List, Optional, Sequence
-
+from typing import AsyncIterator
 
 from fastapi import FastAPI
 from langchain.schema import Document
 #from langchain.chat_models import ChatOpenAI
 from langchain_openai import ChatOpenAI
+from langchain_openai import AzureChatOpenAI
 from langchain.prompts import ChatPromptTemplate
 from langchain.prompts.prompt import PromptTemplate
 from langchain.schema import format_document
@@ -53,15 +54,30 @@ from langchain_core.output_parsers import StrOutputParser
 
 from langserve import add_routes
 from langserve.pydantic_v1 import BaseModel, Field
+from langchain_openai import AzureChatOpenAI
+from langchain.cache import InMemoryCache
+from langchain.retrievers.multi_query import MultiQueryRetriever
+from langchain.retrievers import ContextualCompressionRetriever
+from langchain.retrievers.document_compressors import LLMChainExtractor
+from langchain.globals import set_llm_cache
+from langchain.globals import set_debug
+
+set_debug(True)
+
 
 load_dotenv()
 
+set_llm_cache(InMemoryCache())
+
 
 # Config
-OPENSEARCH_URL = os.getenv("OPENSEARCH_URL") 
-OPENSEARCH_USERNAME = os.getenv("OPENSEARCH_USERNAME")
-OPENSEARCH_PASSWORD = os.getenv("OPENSEARCH_PASSWORD")
-OPENSEARCH_INDEX_NAME = os.getenv("OPENSEARCH_INDEX_NAME")
+OPENSEARCH_URL = os.getenv("v2_OPENSEARCH_URL") 
+OPENSEARCH_USERNAME = os.getenv("v2_OPENSEARCH_USERNAME")
+OPENSEARCH_PASSWORD = os.getenv("v2_OPENSEARCH_PASSWORD")
+OPENSEARCH_INDEX_NAME = os.getenv("v2_OPENSEARCH_INDEX_NAME")
+
+AZURE_OPENAI_API_KEY = os.getenv("AZURE_OPENAI_API_KEY") 
+AZURE_OPENAI_DEPLOYMENT_ENDPOINT = os.getenv("https://unepazcsdopenai-comms.openai.azure.com/")
 
 
 _TEMPLATE = """
@@ -85,10 +101,19 @@ ANSWER_TEMPLATE = load_answer_template("answer.txt")
 
 ANSWER_PROMPT = ChatPromptTemplate.from_template(ANSWER_TEMPLATE)
 
-
 DEFAULT_DOCUMENT_PROMPT = PromptTemplate.from_template(template="{page_content}")
 
-llm = ChatOpenAI(
+llm = AzureChatOpenAI(
+    openai_api_version="2023-05-15",
+    openai_api_key=AZURE_OPENAI_API_KEY, 
+    model_name="gpt-35-turbo", 
+    openai_api_type="azure",
+    openai_api_base= AZURE_OPENAI_DEPLOYMENT_ENDPOINT,
+    temperature=0.7,
+    stream=True,
+)
+
+llmpp = ChatOpenAI(
     model="gpt-3.5-turbo",
     streaming=True,
     temperature=0.7,
@@ -105,40 +130,42 @@ def get_retriever() -> BaseRetriever:
         embedding_function=embedding_function,
         verify_certs=False,
         vector_field= "embedding",
+        metadata_fields={"path": "metadata.path", "title": "metadata.title"}
     )
 
-    return vector_store.as_retriever(search_kwargs={'k': 3, 'vector_field':"embedding",'score_threshold': 0.5})
-
-
-
-try:
-    vector_store = OpenSearchVectorSearch(
-        opensearch_url=OPENSEARCH_URL,
-        http_auth=(OPENSEARCH_USERNAME, OPENSEARCH_PASSWORD),
-        index_name=OPENSEARCH_INDEX_NAME,
-        embedding_function=embedding_function,
-        vector_field= "embedding",
-        verify_certs=False
-    )
+    return vector_store.as_retriever(search_kwargs={'k': 3, 'vector_field':"embedding"})
     
-    print("Connected to OpenSearch successfully!")
 
-    print(f"OPENSEARCH_URL: {OPENSEARCH_URL, OPENSEARCH_USERNAME, OPENSEARCH_PASSWORD}")
+#try:
+    #vector_store = OpenSearchVectorSearch(
+      #  opensearch_url=OPENSEARCH_URL,
+        #http_auth=(OPENSEARCH_USERNAME, OPENSEARCH_PASSWORD),
+        #index_name=OPENSEARCH_INDEX_NAME,
+        #embedding_function=embedding_function,
+        #vector_field= "embedding",
+        #verify_certs=False,
+        #metadata_fields={"path": "metadata.path", "title": "metadata.title"}
+
+   # )
+    
+    #print("Connected to OpenSearch successfully!")
+
+    #print(f"OPENSEARCH_URL: {OPENSEARCH_URL, OPENSEARCH_USERNAME, OPENSEARCH_PASSWORD}")
 
 
-    query = "any news related to recent UN Environment Programme (UNEP) report on air quality?"
-    top_k = 3
+    #query = "what is pollution"
+    #top_k = 3
 
     #results = vector_store.similarity_search(query, k=top_k, vector_field="embedding")
+    #Publication, speech, stories, 
 
     #print(f"Got {len(results)} results for query: {query}")
     #for result in results: 
-        #print(result)
+       #print(result)
 
-
-except Exception as e:
-    print("Failed to connect to OpenSearch!")
-    print(f"Error: {e}")
+#except Exception as e:
+  #print("Failed to connect to OpenSearch!")
+    #print(f"Error: {e}")
 
 
 # User input
@@ -188,15 +215,34 @@ def serialize_history(request: ChatHistory):
         if message.get("ai") is not None:
             converted_chat_history.append(AIMessage(content=message["ai"]))
     return converted_chat_history
+from langchain.retrievers import ContextualCompressionRetriever
+from langchain.retrievers.document_compressors import LLMChainExtractor
 
 def create_chain(
     llm: BaseLanguageModel,
     retriever: BaseRetriever,
+
 ) -> Runnable:
+        
+    # Create a MultiQueryRetriever instance
+    multi_query_retriever = MultiQueryRetriever.from_llm(
+        retriever=retriever,
+        llm=llm,
+        include_original=True  # Set include_original to True or False as per your requirement
+    )
+
+    compressor = LLMChainExtractor.from_llm(llm)
+    compression_retriever = ContextualCompressionRetriever(
+        base_compressor=compressor, base_retriever=multi_query_retriever
+    )
+
+    # Integrate MultiQueryRetriever into the chain
     retriever_chain = create_retriever_chain(
         llm,
-        retriever,
+        compression_retriever,  # Use MultiQueryRetriever instead of the base retriever
     ).with_config(run_name="FindDocs")
+
+
     _context = RunnableMap(
         {
             "context": retriever_chain | format_docs,
@@ -204,6 +250,8 @@ def create_chain(
             "chat_history": itemgetter("chat_history"),
         }
     ).with_config(run_name="RetrieveDocs")
+
+    
     prompt = ChatPromptTemplate.from_messages(
         [
             ("system", ANSWER_TEMPLATE),
@@ -216,6 +264,7 @@ def create_chain(
         run_name="GenerateResponse",
     )
     return (
+        
         {
             "question": RunnableLambda(itemgetter("question")).with_config(
                 run_name="Itemgetter:question"
@@ -226,11 +275,15 @@ def create_chain(
         }
         | _context
         | response_synthesizer
+        
     )
 
+
+
 retriever = get_retriever()
+
 answer_chain = create_chain(
     llm,
-    retriever,
+    retriever
 )
 
