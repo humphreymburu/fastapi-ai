@@ -68,6 +68,7 @@ AZURE_OPENAI_API_KEY = os.getenv("AZURE_OPENAI_API_KEY")
 AZURE_OPENAI_DEPLOYMENT_ENDPOINT = os.getenv("https://unepazcsdopenai-comms.openai.azure.com/")
 
 
+
 _TEMPLATE = """
 Given the following conversation and a follow up question, rephrase the 
 follow up question to be a standalone question, in its original language.
@@ -91,7 +92,7 @@ ANSWER_PROMPT = ChatPromptTemplate.from_template(ANSWER_TEMPLATE)
 
 DEFAULT_DOCUMENT_PROMPT = PromptTemplate.from_template(template="{page_content}")
 
-llmAzure = AzureChatOpenAI(
+llm = AzureChatOpenAI(
     openai_api_version="2023-05-15",
     openai_api_key=AZURE_OPENAI_API_KEY, 
     model_name="gpt-3.5-turbo", 
@@ -100,7 +101,7 @@ llmAzure = AzureChatOpenAI(
     temperature=0.7
 )
 
-llm = ChatOpenAI(
+llmOpen = ChatOpenAI(
     model="gpt-3.5-turbo",
     streaming=True,
     temperature=0.7,
@@ -137,7 +138,7 @@ try:
     print(f"OPENSEARCH_URL: {OPENSEARCH_URL, OPENSEARCH_USERNAME, OPENSEARCH_PASSWORD}")
 
 
-    query = "any news related to recent UN Environment Programme (UNEP) report on air quality?"
+    query = ""
     top_k = 3
 
     #results = vector_store.similarity_search(query, k=top_k, vector_field="embedding")
