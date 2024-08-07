@@ -15,7 +15,6 @@ import os
 from dotenv import load_dotenv
 from typing import Dict, List, Optional, Sequence
 from typing import AsyncIterator
-
 from fastapi import FastAPI
 from langchain.schema import Document
 
@@ -28,6 +27,9 @@ from langchain.schema import format_document
 from langchain.schema.output_parser import StrOutputParser
 from langchain.schema.runnable import RunnableMap, RunnablePassthrough
 from langchain_community.chat_models import ChatOpenAI
+from langchain_community.vectorstores.supabase import SupabaseVectorStore
+from langchain_openai import OpenAIEmbeddings
+from supabase.client import Client, create_client
 
 # from langchain_community.embeddings import OpenAIEmbeddings
 from langchain_core.runnables.base import (
@@ -81,6 +83,10 @@ AZURE_OPENAI_API_KEY = os.getenv("AZURE_OPENAI_API_KEY")
 AZURE_OPENAI_DEPLOYMENT_ENDPOINT = os.getenv(
     "https://unepazcsdopenai-comms.openai.azure.com/"
 )
+
+supabase_url = os.environ.get("SUPABASE_URL")
+supabase_key = os.environ.get("SUPABASE_SERVICE_KEY")
+supabase: Client = create_client(supabase_url, supabase_key)
 
 
 _TEMPLATE = """
@@ -162,7 +168,7 @@ llmpp = ChatOpenAI(
 embedding_function = OpenAIEmbeddings(openai_api_key=os.getenv("OPENAI_API_KEY"))
 
 
-def get_retriever() -> BaseRetriever:
+def get_retriever2() -> BaseRetriever:
     vector_store = OpenSearchVectorSearch(
         opensearch_url=OPENSEARCH_URL,
         http_auth=(OPENSEARCH_USERNAME, OPENSEARCH_PASSWORD),
@@ -176,6 +182,18 @@ def get_retriever() -> BaseRetriever:
     return vector_store.as_retriever(
         search_kwargs={"k": 3, "vector_field": "embedding"}
     )
+
+
+def get_retriever() -> BaseRetriever:
+
+    vector_store = SupabaseVectorStore(
+        embedding=embedding_function,
+        client=supabase,
+        table_name="documents",
+        query_name="match_documents",
+    )
+
+    return vector_store.as_retriever(search_kwargs={"k": 3})
 
 
 # try:

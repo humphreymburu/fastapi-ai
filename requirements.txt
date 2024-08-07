@@ -7,3 +7,4 @@ pydantic
 openai
 langchain-community
 langchain-openai
+supabase
